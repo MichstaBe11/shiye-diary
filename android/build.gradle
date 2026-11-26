@@ -11,6 +11,14 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(':app')
+    if (project.name == 'shared_storage') {
+        project.afterEvaluate {
+            // This upstream plugin fixes Java at 17 but leaves Kotlin on the host JDK.
+            project.tasks.matching { it.name.startsWith('compile') && it.name.endsWith('Kotlin') }.configureEach {
+                kotlinOptions.jvmTarget = '17'
+            }
+        }
+    }
 }
 
 tasks.register("clean", Delete) {

@@ -5,7 +5,6 @@ import 'package:daily_you/file_layer.dart';
 import 'package:daily_you/models/image.dart';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
-import 'package:media_scanner/media_scanner.dart';
 import 'package:share_plus/share_plus.dart';
 
 class ImageViewPage extends StatefulWidget {
@@ -138,7 +137,6 @@ class _ImageViewPageState extends State<ImageViewPage> {
                     if (newImageName != null) {
                       if (Platform.isAndroid) {
                         // Add image to media store
-                        MediaScanner.loadMedia(path: newImageName);
                       }
                     }
                   }

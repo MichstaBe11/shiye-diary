@@ -1,54 +1,29 @@
-<p align="center">
-<img width="200" src="https://github.com/Demizo/Daily_You/blob/master/assets/logo.svg" alt="Daily You Logo">
-</p>
-<h1 align="center">Daily You</h1>
-<h2 align="center">Every day is worth remembering...</h2>
+# 拾页日记
 
-Daily You is an app made to store memories of the passing days. Log each day and look back on past moments. Works offline with support for external storage locations. Daily You is inspired by ptrLx's [OneShot](https://github.com/ptrLx/OneShot).
+拾页日记是一个用于 Android 的开源日记 App。可以离线写日记、加照片、整理分类，也可以把日记和照片一起备份。不需要登录或开会员。
 
-### Features:
-- Take daily logs
-- Record your mood
-- Keep photo memories
-- Markdown support
-- Reminder notifications
-- Search your past logs
-- Set custom storage locations
+## 为什么做这个 App
 
-## Screenshots
-<p>
-<img width="200" src="https://github.com/Demizo/Daily_You/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_0.png" alt="app screenshot">
-<img width="200" src="https://github.com/Demizo/Daily_You/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_1.png" alt="app screenshot">
-<img width="200" src="https://github.com/Demizo/Daily_You/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_2.png" alt="app screenshot">
-<img width="200" src="https://github.com/Demizo/Daily_You/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_3.png" alt="app screenshot">
-</p>
+有一天，我像往常一样打开用了很久的日记软件，准备写一篇日记，却发现再写一篇就得开通会员。那一刻我想，既然我只是想把今天的事记下来，为什么不自己做一个能每天用的日记本？
 
-## Download 
+拾页日记就是从这个念头开始的。我先做了自己最常用的功能，也把源码放在这里，给同样想做一个手机日记本的人参考。
 
-[![Downloads](https://img.shields.io/github/downloads/Demizo/Daily_You/total)](https://github.com/Demizo/Daily_You/releases)
+## 可以做什么
 
-[<img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" height="80">](https://apt.izzysoft.de/fdroid/index/apk/com.demizo.daily_you)
-[<img src="https://github.com/machiav3lli/oandbackupx/blob/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">](https://github.com/Demizo/Daily_You/releases/latest)
+1. 写日记、编辑和删除，写到一半可以自动保存草稿。
+2. 给一篇日记加多张照片，可预览、缩放或移除。
+3. 按阅读摘要、人物故事、感悟随笔、灵感、待办等分类整理。支持自己新增、重命名、排序和删除分类。
+4. 搜索标题或正文，也可以在某个分类里搜索。
+5. 在「我的」里导出或导入 ZIP 备份，包含文字、分类和照片。
 
-## Migrate From Another App
-Are you coming from another app? Daily You supports migration from other apps! If the app you use isn't listed below feel free to request it. **Note:** Imports from some apps may not be one-to-one since Daily You likely has different features/limitations.
-### OneShot
-Within OneShot's settings, entries can be exported as a JSON file. The JSON file can be directly imported into Daily You by going to `Settings > Import Logs... > OneShot`. Images can be imported by using the `Import Images` option and selecting all of your OneShot photos. Alternatively, you can set your `Image Folder` to be the same folder where OneShot saved its images.
-### Daylio
-Daylio has a very different set of features from Daily You and as such lacks a one-to-one import. Steps, as well as a helper script, for migrating from Daylio are provided in this repo [daylio-to-daily-you](https://github.com/Demizo/daylio-to-daily-you).
+## 安装与构建
 
-## Contributing
-### Translation 
+- [下载 Android 试用版 APK](../../releases/tag/v0.1.0)（Android 6.0 及以上，使用开发签名）。
+- 从源码开始，使用 Flutter 3.29.3 和 JDK 21。完整环境、构建命令和测试方式见 [开发说明](README_SHIYE.md)。
+- 想参考具体实现，可以从 [界面和备份](lib/shiye/) 与 [数据库和分类](lib/entries_database.dart) 开始读。
 
-[![Translation](https://hosted.weblate.org/widget/daily-you/svg-badge.svg)](https://hosted.weblate.org/engage/daily-you/)
+日记和照片存放在手机本机。卸载会清除应用数据，请先导出备份。备份文件未加密，重复导入会新增副本。
 
-Daily You uses [Weblate](https://weblate.org) to easily manage translation. If you would like to help translate the app, please visit [the Daily You project on Weblate](https://hosted.weblate.org/projects/daily-you/), thank you!
+## 上游与许可证
 
-## Development
-Daily You is built using Flutter.
-- Clone the repo
-- Install Flutter dependencies
-- Setup with `flutter pub get`
-
-## License
-This software is free software licensed under the GNU General Public License 3.0.
+本项目基于 [Daily You v2.7.1](https://github.com/Demizo/Daily_You/tree/v2.7.1) 修改，感谢 Demizo 和所有贡献者。项目按 [GNU GPL v3](LICENSE.txt) 分发，保留了 [上游 README](README_UPSTREAM.md)。

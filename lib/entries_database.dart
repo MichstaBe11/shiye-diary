@@ -2,6 +2,7 @@
 
 import 'dart:io';
 import 'dart:isolate';
+import 'package:daily_you/shiye/category.dart';
 import 'package:archive/archive_io.dart';
 import 'package:daily_you/config_provider.dart';
 import 'package:daily_you/file_bytes_cache.dart';
@@ -14,7 +15,6 @@ import 'package:daily_you/models/template.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
-import 'package:media_scanner/media_scanner.dart';
 import 'package:schedulers/schedulers.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,6 +24,7 @@ class EntriesDatabase {
   static final EntriesDatabase instance = EntriesDatabase._init();
 
   static Database? _database;
+  String? _pathOverride;
 
   final FileBytesCache imageCache =
       FileBytesCache(maxCacheSize: 100 * 1024 * 1024);
@@ -31,7 +32,9 @@ class EntriesDatabase {
 
   EntriesDatabase._init();
 
-  Future<bool> initDB({bool forceWithoutSync = false}) async {
+  Future<bool> initDB(
+      {bool forceWithoutSync = false, String? pathOverride}) async {
+    _pathOverride = pathOverride;
     if (usingExternalDb() && !forceWithoutSync) {
       if (await hasDbUriPermission()) {
         await syncDatabase();
@@ -40,10 +43,10 @@ class EntriesDatabase {
       }
     }
 
-    final dbPath = await getInternalDbPath();
+    final dbPath = pathOverride ?? await getInternalDbPath();
 
     _database = await openDatabase(dbPath,
-        version: 3, onCreate: _createDB, onUpgrade: _onUpgrade);
+        version: 4, onCreate: _createDB, onUpgrade: _onUpgrade);
     return _database != null;
   }
 
@@ -58,6 +61,7 @@ CREATE TABLE $entriesTable (
   ${EntryFields.timeModified} DATETIME NOT NULL DEFAULT (DATETIME('now'))
 )
 ''');
+    await _createCategories(db);
     await db.execute('''
 CREATE TABLE $templatesTable (
   ${TemplatesFields.id} INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +83,7 @@ CREATE TABLE $imagesTable (
 ''');
   }
 
-  void _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     _database = db;
     // In this case, oldVersion is 1, newVersion is 2
     if (oldVersion == 1) {
@@ -104,8 +108,9 @@ CREATE TABLE $imagesTable (
     FOREIGN KEY (${EntryImageFields.entryId}) REFERENCES $entriesTable (id)
 )
 ''');
-      await db.transaction((txn) async {
-        await txn.execute('''
+      // openDatabase already wraps migrations in a transaction.
+      final txn = db;
+      await txn.execute('''
 -- Step 1: Insert the non-null imgPath entries into the imagesTable
 INSERT INTO $imagesTable (${EntryImageFields.entryId}, ${EntryImageFields.imgPath}, ${EntryImageFields.imgRank}, ${EntryImageFields.timeCreate})
 SELECT ${EntryFields.id}, $deprecatedImgPath, 0, ${EntryFields.timeCreate}
@@ -113,12 +118,12 @@ FROM $entriesTable
 WHERE $deprecatedImgPath IS NOT NULL;
     ''');
 
-        await txn.execute('''
+      await txn.execute('''
 -- Step 2: Rename the old entries table
 ALTER TABLE $entriesTable RENAME TO old_entries;
     ''');
 
-        await txn.execute('''
+      await txn.execute('''
 -- Step 3: Create a new entries table without the imgPath field
 CREATE TABLE $entriesTable (
   ${EntryFields.id} INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -129,19 +134,178 @@ CREATE TABLE $entriesTable (
 );
     ''');
 
-        await txn.execute('''
+      await txn.execute('''
 -- Step 4: Copy data from the old entries table to the new one
 INSERT INTO $entriesTable (${EntryFields.id}, ${EntryFields.text}, ${EntryFields.mood}, ${EntryFields.timeCreate}, ${EntryFields.timeModified})
 SELECT ${EntryFields.id}, ${EntryFields.text}, ${EntryFields.mood}, ${EntryFields.timeCreate}, ${EntryFields.timeModified}
 FROM old_entries;
     ''');
 
-        await txn.execute('''
+      await txn.execute('''
 -- Step 5: Drop the old entries table
 DROP TABLE old_entries;
     ''');
-      });
     }
+    if (oldVersion < 4) await _createCategories(db);
+  }
+
+  Future<void> _createCategories(Database db) async {
+    await db.execute(
+        'CREATE TABLE diary_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, position INTEGER NOT NULL)');
+    await db.execute(
+        "ALTER TABLE entries ADD COLUMN title TEXT NOT NULL DEFAULT ''");
+    await db.execute('ALTER TABLE entries ADD COLUMN category_id INTEGER');
+    await db.execute(
+        'ALTER TABLE entries ADD COLUMN is_draft INTEGER NOT NULL DEFAULT 0');
+    await db.execute(
+        'CREATE INDEX entries_category_idx ON entries(category_id, time_create)');
+    const names = ['阅读摘要', '人物故事', '感悟随笔', '灵感', '待办'];
+    for (var i = 0; i < names.length; i++) {
+      await db.insert('diary_categories', {'name': names[i], 'position': i});
+    }
+  }
+
+  Future<List<DiaryCategory>> getCategories() async =>
+      (await _database!.query('diary_categories', orderBy: 'position, id'))
+          .map(DiaryCategory.fromJson)
+          .toList();
+
+  static String validateCategoryName(String value) {
+    final name = value.trim();
+    if (name.isEmpty || name.runes.length > 20) {
+      throw const FormatException('分类名称需为 1–20 个字');
+    }
+    if (['全部', '未分类'].contains(name)) {
+      throw const FormatException('这个名称已被系统使用');
+    }
+    return name;
+  }
+
+  Future<int> saveCategory(String value, {int? id}) async {
+    final name = validateCategoryName(value);
+    return _database!.transaction((txn) async {
+      final duplicate = await txn.query('diary_categories',
+          where: 'name = ? AND id != ?', whereArgs: [name, id ?? -1]);
+      if (duplicate.isNotEmpty) throw const FormatException('已有同名分类');
+      if (id != null) {
+        await txn.update('diary_categories', {'name': name},
+            where: 'id = ?', whereArgs: [id]);
+        return id;
+      }
+      final max = Sqflite.firstIntValue(await txn.rawQuery(
+          'SELECT COALESCE(MAX(position), -1) FROM diary_categories'))!;
+      return txn
+          .insert('diary_categories', {'name': name, 'position': max + 1});
+    });
+  }
+
+  Future<void> deleteCategory(int id) async {
+    await _database!.transaction((txn) async {
+      await txn.update('entries', {'category_id': null},
+          where: 'category_id = ?', whereArgs: [id]);
+      await txn.delete('diary_categories', where: 'id = ?', whereArgs: [id]);
+    });
+  }
+
+  Future<void> reorderCategories(List<int> ids) async {
+    await _database!.transaction((txn) async {
+      for (var i = 0; i < ids.length; i++) {
+        await txn.update('diary_categories', {'position': i},
+            where: 'id = ?', whereArgs: [ids[i]]);
+      }
+    });
+  }
+
+  Future<List<Entry>> searchEntries(String query,
+      {int? categoryId, bool uncategorized = false}) async {
+    final clauses = <String>[];
+    final args = <Object>[];
+    if (query.trim().isNotEmpty) {
+      clauses.add(
+          '(instr(lower(title), lower(?)) > 0 OR instr(lower(text), lower(?)) > 0)');
+      args.addAll([query.trim(), query.trim()]);
+    }
+    if (uncategorized) {
+      clauses.add('category_id IS NULL');
+    } else if (categoryId != null) {
+      clauses.add('category_id = ?');
+      args.add(categoryId);
+    }
+    return (await _database!.query('entries',
+            where: clauses.isEmpty ? null : clauses.join(' AND '),
+            whereArgs: args,
+            orderBy: 'time_create DESC, id DESC'))
+        .map(Entry.fromJson)
+        .toList();
+  }
+
+  Future<Entry> saveDiary(Entry entry) async {
+    final values = entry.toJson();
+    return _database!.transaction((txn) async {
+      if (entry.categoryId != null &&
+          (await txn.query('diary_categories',
+                  where: 'id = ?', whereArgs: [entry.categoryId]))
+              .isEmpty) {
+        values['category_id'] = null;
+      }
+      if (entry.id == null) {
+        final id = await txn.insert('entries', values);
+        return Entry.fromJson({...values, 'id': id});
+      }
+      final updated = await txn
+          .update('entries', values, where: 'id = ?', whereArgs: [entry.id]);
+      if (updated != 1) throw StateError('日记不存在，无法保存');
+      return Entry.fromJson(values);
+    });
+  }
+
+  Future<void> deleteDiary(int id) async {
+    // Remove database records first; orphaned files are safer than broken entries.
+    final images = await getImagesForEntry(id);
+    await _database!.transaction((txn) async {
+      await txn.delete(imagesTable, where: 'entry_id = ?', whereArgs: [id]);
+      await txn.delete(entriesTable, where: 'id = ?', whereArgs: [id]);
+    });
+    for (final image in images) {
+      try {
+        await deleteImg(image.imgPath);
+      } catch (_) {/* Unreferenced file only. */}
+    }
+  }
+
+  Future<int> mergeDiaryBackup(
+      List<Map<String, Object?>> categories,
+      List<Map<String, Object?>> entries,
+      List<Map<String, Object?>> images) async {
+    return _database!.transaction((txn) async {
+      final categoryMap = <int, int>{};
+      for (final row in categories) {
+        final name = validateCategoryName(row['name'] as String);
+        final existing = await txn
+            .query('diary_categories', where: 'name = ?', whereArgs: [name]);
+        final max = Sqflite.firstIntValue(await txn.rawQuery(
+            'SELECT COALESCE(MAX(position), -1) FROM diary_categories'))!;
+        categoryMap[row['id'] as int] = existing.isNotEmpty
+            ? existing.first['id'] as int
+            : await txn.insert(
+                'diary_categories', {'name': name, 'position': max + 1});
+      }
+      final entryMap = <int, int>{};
+      for (final row in entries) {
+        // Import adds copies so an existing entry or photo can never be overwritten.
+        final value = Map<String, Object?>.from(row)..remove('id');
+        value['category_id'] = categoryMap[row['category_id']];
+        entryMap[row['id'] as int] = await txn.insert('entries', value);
+      }
+      for (final row in images) {
+        final parent = entryMap[row['entry_id']];
+        if (parent == null) continue;
+        final value = Map<String, Object?>.from(row)..remove('id');
+        value['entry_id'] = parent;
+        await txn.insert(imagesTable, value);
+      }
+      return entryMap.length;
+    });
   }
 
   // Template Methods
@@ -251,15 +415,15 @@ DROP TABLE old_entries;
   Future<int> removeImg(EntryImage entryImage, {updateData = true}) async {
     final db = _database!;
 
-    // Delete image
-    await deleteImg(entryImage.imgPath);
-
     // Remove from database
     final removedId = await db.delete(
       imagesTable,
       where: '${EntryImageFields.id} = ?',
       whereArgs: [entryImage.id],
     );
+    try {
+      await deleteImg(entryImage.imgPath);
+    } catch (_) {/* Unreferenced file only. */}
     if (updateData) {
       await StatsProvider.instance.updateStats();
       if (usingExternalDb()) await updateExternalDatabase();
@@ -317,15 +481,13 @@ DROP TABLE old_entries;
       return imageName;
     }
 
-    var newImageName =
-        "daily_you_${currTime.month}_${currTime.day}_${currTime.year}-${currTime.hour}.${currTime.minute}.${currTime.second}.jpg";
+    var newImageName = "shiye_${currTime.microsecondsSinceEpoch}.jpg";
 
     // Ensure unique name
     int index = 1;
     while (await FileLayer.exists(await getInternalImgDatabasePath(),
         name: newImageName, useExternalPath: false)) {
-      newImageName =
-          "daily_you_${currTime.month}_${currTime.day}_${currTime.year}-${currTime.hour}.${currTime.minute}.${currTime.second}_$index.jpg";
+      newImageName = "shiye_${currTime.microsecondsSinceEpoch}_$index.jpg";
       index += 1;
     }
 
@@ -338,14 +500,11 @@ DROP TABLE old_entries;
         await getInternalImgDatabasePath(), newImageName, bytes,
         useExternalPath: false);
     if (imageFilePath == null) return null;
-    if (Platform.isAndroid) {
-      // Add image to media store
-      MediaScanner.loadMedia(path: imageFilePath);
-    }
     return newImageName;
   }
 
   Future<bool> deleteImg(String imageName) async {
+    imageCache.clear();
     // Delete remote
     if (usingExternalImg()) {
       await FileLayer.deleteFile(await getExternalImgDatabasePath(),
@@ -471,7 +630,8 @@ DROP TABLE old_entries;
   Future close() async {
     final db = _database!;
     _database = null;
-    db.close();
+    await db.close();
+    imageCache.clear();
   }
 
   bool usingExternalDb() {
@@ -483,6 +643,11 @@ DROP TABLE old_entries;
   }
 
   Future<String> getInternalImgDatabasePath() async {
+    if (_pathOverride != null) {
+      final directory = Directory(join(dirname(_pathOverride!), 'Images'));
+      await directory.create(recursive: true);
+      return directory.path;
+    }
     Directory basePath;
     if (Platform.isAndroid) {
       basePath = (await getExternalStorageDirectory())!;
@@ -508,6 +673,7 @@ DROP TABLE old_entries;
   }
 
   Future<String> getInternalDbPath() async {
+    if (_pathOverride != null) return _pathOverride!;
     Directory basePath;
     if (Platform.isAndroid) {
       basePath = (await getExternalStorageDirectory())!;

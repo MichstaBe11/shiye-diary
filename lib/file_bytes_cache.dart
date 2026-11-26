@@ -21,6 +21,7 @@ class FileBytesCache {
 
   void put(String key, Uint8List value) {
     final valueSize = value.lengthInBytes;
+    if (valueSize > maxCacheSize) return;
 
     // If the key already exists, update the value
     if (_cache.containsKey(key)) {

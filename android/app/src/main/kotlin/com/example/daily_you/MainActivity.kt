@@ -1,4 +1,4 @@
-package com.demizo.daily_you
+package app.shiye.diary
 
 import io.flutter.embedding.android.FlutterActivity
 
