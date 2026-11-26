@@ -2,6 +2,8 @@
 
 拾页日记是一个用于 Android 的开源日记 App。可以离线写日记、加照片、整理分类，也可以把日记和照片一起备份。不需要登录或开会员。
 
+**[直接下载 Android APK](https://github.com/MichstaBe11/shiye-diary/releases/download/v0.1.0/shiye-diary-0.1.0.apk)**
+
 ## 为什么做这个 App
 
 有一天，我像往常一样打开用了很久的日记软件，准备写一篇日记，却发现再写一篇就得开通会员。那一刻我想，既然我只是想把今天的事记下来，为什么不自己做一个能每天用的日记本？
@@ -18,7 +20,7 @@
 
 ## 安装与构建
 
-- [下载 Android 试用版 APK](../../releases/tag/v0.1.0)（Android 6.0 及以上，使用开发签名）。
+- 需要 Android 6.0 或更新版本。安装包使用开发签名。
 - 从源码开始，使用 Flutter 3.29.3 和 JDK 21。完整环境、构建命令和测试方式见 [开发说明](README_SHIYE.md)。
 - 想参考具体实现，可以从 [界面和备份](lib/shiye/) 与 [数据库和分类](lib/entries_database.dart) 开始读。
 
